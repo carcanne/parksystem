@@ -1,5 +1,3 @@
-// Reine Logik ohne Arduino-Abhaengigkeiten, damit sie auch auf dem PC
-// getestet werden kann (siehe tests/test_logic.cpp).
 #pragma once
 
 #include <ctype.h>
@@ -8,16 +6,13 @@
 
 enum PlateCheck {
   PLATE_OK,
-  PLATE_EMPTY,       // leere Eingabe (nur Leerzeichen zaehlt auch als leer)
-  PLATE_NO_LETTERS,  // z.B. "123456"
-  PLATE_BAD_FORMAT   // z.B. "A 123456", "AG 1234567"
+  PLATE_EMPTY,
+  PLATE_NO_LETTERS,
+  PLATE_BAD_FORMAT
 };
 
-const size_t PLATE_LEN = 16;  // Platz fuer "AG 123456" inkl. Nullterminator
+const size_t PLATE_LEN = 16;
 
-// Vereinheitlicht ein Kennzeichen (Grossbuchstaben, Leerzeichen entfernt) und
-// prueft das Format: zwei Buchstaben, danach ein bis sechs Ziffern.
-// Bei PLATE_OK steht das Kennzeichen im Format "AG 123456" in out.
 inline PlateCheck normalizePlate(const char* in, char* out, size_t outSize) {
   char compact[32];
   size_t len = 0;
@@ -49,14 +44,11 @@ inline PlateCheck normalizePlate(const char* in, char* out, size_t outSize) {
   return PLATE_OK;
 }
 
-// Aufenthaltsdauer in ganzen Minuten, Sekunden werden abgeschnitten.
 inline long parkedMinutes(long long entryEpoch, long long nowEpoch) {
   if (nowEpoch <= entryEpoch) return 0;
   return (long)((nowEpoch - entryEpoch) / 60);
 }
 
-// Tarif: jede angefangene Stunde kostet CHF 2.00, auch die erste.
-// 0-60 Min = 2.00, 61-120 Min = 4.00, 121-180 Min = 6.00 ...
 const long RAPPEN_PER_HOUR = 200;
 
 inline long feeRappen(long minutes) {
@@ -64,7 +56,6 @@ inline long feeRappen(long minutes) {
   return hours * RAPPEN_PER_HOUR;
 }
 
-// Formatiert einen Betrag in Rappen als "CHF 6.00".
 inline void formatChf(long rappen, char* out, size_t outSize) {
   snprintf(out, outSize, "CHF %ld.%02ld", rappen / 100, rappen % 100);
 }

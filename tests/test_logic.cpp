@@ -1,6 +1,3 @@
-// Unit-Tests fuer die Kassen-Logik, laufen auf dem PC:
-//   c++ -std=c++17 -Wall -o test_logic tests/test_logic.cpp && ./test_logic
-// Die Faelle entsprechen den Grenzwerten aus dem Testkonzept (TF-05 bis TF-16).
 #include <stdio.h>
 #include <string.h>
 
@@ -37,7 +34,6 @@ static void expectMinutes(long long entry, long long now, long expected) {
 }
 
 int main() {
-  // Gueltige Kennzeichen (TF-01, TF-04, TF-09, TF-10)
   expectPlate("AG 123456", PLATE_OK, "AG 123456");
   expectPlate("LU 4711", PLATE_OK, "LU 4711");
   expectPlate("ZG 7", PLATE_OK, "ZG 7");
@@ -45,7 +41,6 @@ int main() {
   expectPlate("  ag   123456 ", PLATE_OK, "AG 123456");
   expectPlate("ag123456", PLATE_OK, "AG 123456");
 
-  // Ungueltige Kennzeichen (TF-05 bis TF-08)
   expectPlate("123456", PLATE_NO_LETTERS, nullptr);
   expectPlate("", PLATE_EMPTY, nullptr);
   expectPlate("   ", PLATE_EMPTY, nullptr);
@@ -57,7 +52,6 @@ int main() {
   expectPlate("AG-123", PLATE_BAD_FORMAT, nullptr);
   expectPlate("ÄG 123", PLATE_BAD_FORMAT, nullptr);
 
-  // Gebuehr (TF-12 bis TF-16, TF-25, TF-26)
   expectFee(0, "CHF 2.00");
   expectFee(40, "CHF 2.00");
   expectFee(60, "CHF 2.00");
@@ -67,7 +61,6 @@ int main() {
   expectFee(180, "CHF 6.00");
   expectFee(181, "CHF 8.00");
 
-  // Sekunden werden abgeschnitten
   expectMinutes(1000, 1000, 0);
   expectMinutes(1000, 1000 + 59, 0);
   expectMinutes(1000, 1000 + 60 * 60 + 59, 60);

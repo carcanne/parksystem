@@ -1,11 +1,7 @@
-// Parksystem - Pico 1 (Kasse)
-//
-// Verwaltet Kennzeichen, Einfahrtszeiten und Bezahlstatus im Arbeitsspeicher
-// und stellt die Weboberflaeche fuer Kasse (/) und Automat (/automat) bereit.
-// Der Schranken-Pico fragt hier ueber /api/entry und /api/exit an.
-
 #include <WiFi.h>
 #include <WebServer.h>
+#include <SimpleMDNS.h>
+#include <sys/time.h>
 #include <time.h>
 
 #include "config.h"
@@ -23,9 +19,12 @@ struct Vehicle {
 Vehicle vehicles[MAX_VEHICLES];
 WebServer server(80);
 
-// ---------------------------------------------------------------------------
-// Fahrzeugdaten
-// ---------------------------------------------------------------------------
+void reply(int status, const char* type, const String& content) {
+  server.send(status, type, content);
+  WiFiClient& client = server.client();
+  while (client.available()) client.read();
+  client.stop();
+}
 
 Vehicle* findVehicle(const char* plate) {
   for (int i = 0; i < MAX_VEHICLES; i++) {
@@ -42,7 +41,7 @@ Vehicle* freeSlot() {
 }
 
 bool clockValid() {
-  return time(nullptr) > 1700000000;  // NTP hat die Uhr gestellt
+  return time(nullptr) > 1700000000;
 }
 
 String formatTime(time_t t) {
@@ -87,12 +86,6 @@ String vehicleJson(const Vehicle& v) {
   return j;
 }
 
-// ---------------------------------------------------------------------------
-// HTTP-Hilfsfunktionen
-// ---------------------------------------------------------------------------
-
-// Alle Antworten haben die Form {"ok":..,"code":"..","message":"..", ...}.
-// message ist immer ein ganzer Satz fuer die Anzeige (US-6).
 void sendResult(int status, bool ok, const char* code, const String& message,
                 const String& extra = "") {
   String j = "{\"ok\":";
@@ -107,11 +100,9 @@ void sendResult(int status, bool ok, const char* code, const String& message,
     j += extra;
   }
   j += "}";
-  server.send(status, "application/json; charset=utf-8", j);
+  reply(status, "application/json; charset=utf-8", j);
 }
 
-// Liest das Argument "plate" und vereinheitlicht es. Bei einem ungueltigen
-// Kennzeichen wird direkt die Fehlerantwort gesendet und false geliefert.
 bool readPlate(char* plate) {
   String raw = server.arg("plate");
   switch (normalizePlate(raw.c_str(), plate, PLATE_LEN)) {
@@ -143,18 +134,14 @@ Vehicle* readKnownVehicle(char* plate) {
   return v;
 }
 
-// ---------------------------------------------------------------------------
-// API fuer den Schranken-Pico
-// ---------------------------------------------------------------------------
-
-// US-1, US-2: Einfahrt registrieren oder abweisen
 void handleEntry() {
   char plate[PLATE_LEN];
   if (!readPlate(plate)) return;
 
   if (!clockValid()) {
     sendResult(503, false, "NO_TIME",
-               "Die Uhrzeit der Kasse ist nicht synchronisiert, eine Einfahrt ist nicht möglich.");
+               "Die Uhrzeit der Kasse ist nicht gestellt, eine Einfahrt ist nicht möglich. "
+               "Bitte die Kassen-Seite einmal öffnen.");
     return;
   }
   if (findVehicle(plate) != nullptr) {
@@ -168,7 +155,6 @@ void handleEntry() {
     return;
   }
 
-  // Neuer Aufenthalt: ein frueherer Bezahlstatus gilt nicht mehr (TF-25)
   v->used = true;
   strncpy(v->plate, plate, PLATE_LEN);
   v->entry = time(nullptr);
@@ -181,7 +167,6 @@ void handleEntry() {
              "\"vehicle\":" + vehicleJson(*v));
 }
 
-// US-5: Ausfahrt nur bei bezahlter Gebuehr
 void handleExit() {
   char plate[PLATE_LEN];
   Vehicle* v = readKnownVehicle(plate);
@@ -201,7 +186,6 @@ void handleExit() {
   sendResult(200, true, "OK", String("Gute Fahrt! ") + plate + " hat das Parkhaus verlassen.");
 }
 
-// Fahrzeugliste fuer Kasse und Schranken-Oberflaeche
 void handleVehicles() {
   String j = "{\"ok\":true,\"now\":\"";
   j += clockValid() ? formatTime(time(nullptr)) : String("nicht synchronisiert");
@@ -214,14 +198,9 @@ void handleVehicles() {
     first = false;
   }
   j += "]}";
-  server.send(200, "application/json; charset=utf-8", j);
+  reply(200, "application/json; charset=utf-8", j);
 }
 
-// ---------------------------------------------------------------------------
-// API fuer Kasse und Automat
-// ---------------------------------------------------------------------------
-
-// US-3: Gebuehr abfragen
 void handleFee() {
   char plate[PLATE_LEN];
   Vehicle* v = readKnownVehicle(plate);
@@ -234,7 +213,6 @@ void handleFee() {
   sendResult(200, true, "OK", msg, "\"vehicle\":" + vehicleJson(*v));
 }
 
-// US-4: Gebuehr bezahlen
 void handlePay() {
   char plate[PLATE_LEN];
   Vehicle* v = readKnownVehicle(plate);
@@ -256,7 +234,6 @@ void handlePay() {
              "\"vehicle\":" + vehicleJson(*v));
 }
 
-// Testfeld: Einfahrtszeit auf "vor N Minuten" setzen (TF-12 bis TF-16)
 void handleTestTime() {
   char plate[PLATE_LEN];
   Vehicle* v = readKnownVehicle(plate);
@@ -282,23 +259,39 @@ void handleTestTime() {
              "\"vehicle\":" + vehicleJson(*v));
 }
 
-void handlePage() {
-  server.send(200, "text/html; charset=utf-8", KASSE_PAGE);
+void handleTime() {
+  long long epoch = atoll(server.arg("epoch").c_str());
+  if (epoch < 1700000000LL) {
+    sendResult(400, false, "TIME", "Die übermittelte Uhrzeit ist ungültig.");
+    return;
+  }
+  struct timeval tv = {(time_t)epoch, 0};
+  settimeofday(&tv, nullptr);
+  sendResult(200, true, "OK", "Uhrzeit gestellt auf " + formatTime(time(nullptr)) + ".");
 }
 
-// ---------------------------------------------------------------------------
+void handlePage() {
+  reply(200, "text/html; charset=utf-8", KASSE_PAGE);
+}
+
+void printAddress() {
+  Serial.print("Kasse erreichbar unter http://");
+  Serial.println(WiFi.localIP());
+}
 
 void connectWifi() {
   WiFi.mode(WIFI_STA);
+  WiFi.setHostname(HOSTNAME);
+  IPAddress gateway(GATEWAY_IP);
+  WiFi.config(IPAddress(KASSE_IP), gateway, gateway, IPAddress(255, 255, 255, 0));
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.print("Verbinde mit WLAN");
+  Serial.print("Verbinde mit WLAN " WIFI_SSID);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
   Serial.println();
-  Serial.print("Kasse erreichbar unter http://");
-  Serial.println(WiFi.localIP());
+  printAddress();
   digitalWrite(LED_BUILTIN, HIGH);
 }
 
@@ -306,15 +299,10 @@ void setup() {
   Serial.begin(115200);
   pinMode(LED_BUILTIN, OUTPUT);
   connectWifi();
+  MDNS.begin(HOSTNAME);
 
   setenv("TZ", TIMEZONE, 1);
   tzset();
-  NTP.begin("pool.ntp.org", "time.nist.gov");
-  if (NTP.waitSet(15000)) {
-    Serial.printf("Uhrzeit: %s\n", formatTime(time(nullptr)).c_str());
-  } else {
-    Serial.println("Warnung: NTP-Zeit noch nicht gesetzt, Einfahrten werden abgewiesen.");
-  }
 
   server.on("/", HTTP_GET, handlePage);
   server.on("/automat", HTTP_GET, handlePage);
@@ -322,6 +310,7 @@ void setup() {
   server.on("/api/fee", HTTP_GET, handleFee);
   server.on("/api/pay", HTTP_POST, handlePay);
   server.on("/api/testtime", HTTP_POST, handleTestTime);
+  server.on("/api/time", HTTP_POST, handleTime);
   server.on("/api/entry", HTTP_POST, handleEntry);
   server.on("/api/exit", HTTP_POST, handleExit);
   server.onNotFound([]() { sendResult(404, false, "NOT_FOUND", "Diese Seite gibt es nicht."); });
@@ -330,13 +319,26 @@ void setup() {
 
 void loop() {
   server.handleClient();
+  MDNS.update();
+
+  static bool serialWasOpen = false;
+  if (Serial && !serialWasOpen) printAddress();
+  serialWasOpen = Serial;
 
   static unsigned long lastWifiCheck = 0;
-  if (millis() - lastWifiCheck > 10000) {
+  static unsigned long offlineSince = 0;
+  if (millis() - lastWifiCheck > 5000) {
     lastWifiCheck = millis();
-    if (WiFi.status() != WL_CONNECTED) {
+    if (WiFi.status() == WL_CONNECTED) {
+      offlineSince = 0;
+    } else if (offlineSince == 0) {
+      offlineSince = millis();
+      Serial.printf("WLAN getrennt (Status %d)\n", WiFi.status());
+    } else if (millis() - offlineSince > 30000) {
+      Serial.println("WLAN seit 30 s weg, verbinde neu");
       digitalWrite(LED_BUILTIN, LOW);
       connectWifi();
+      offlineSince = 0;
     }
   }
 }
