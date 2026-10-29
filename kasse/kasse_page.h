@@ -166,7 +166,7 @@ function showVehicle(v) {
   badge.textContent = v.paid ? 'bezahlt' : 'nicht bezahlt';
   document.getElementById('rEntry').textContent = v.entry;
   document.getElementById('rMinutes').textContent = v.minutes + ' Min.';
-  document.getElementById('rPaidLine').hidden = !v.paid;
+  document.getElementById('rPaidLine').hidden = v.paidAmount === 'CHF 0.00';
   document.getElementById('rPaid').textContent = v.paidAmount;
   document.getElementById('rOpen').textContent = v.open;
   const btn = document.getElementById('payBtn');

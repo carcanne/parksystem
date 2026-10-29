@@ -12,7 +12,6 @@ struct Vehicle {
   bool used;
   char plate[PLATE_LEN];
   time_t entry;
-  bool paid;
   long paidRappen;
 };
 
@@ -62,8 +61,12 @@ long minutesOf(const Vehicle& v) {
   return parkedMinutes(v.entry, time(nullptr));
 }
 
-long openRappen(const Vehicle& v) {
-  return v.paid ? 0 : feeRappen(minutesOf(v));
+long openRappenOf(const Vehicle& v) {
+  return openRappen(minutesOf(v), v.paidRappen);
+}
+
+bool isPaid(const Vehicle& v) {
+  return openRappenOf(v) == 0;
 }
 
 String vehicleJson(const Vehicle& v) {
@@ -77,11 +80,11 @@ String vehicleJson(const Vehicle& v) {
   j += ",\"fee\":\"";
   j += chf(feeRappen(minutes));
   j += "\",\"paid\":";
-  j += v.paid ? "true" : "false";
+  j += isPaid(v) ? "true" : "false";
   j += ",\"paidAmount\":\"";
   j += chf(v.paidRappen);
   j += "\",\"open\":\"";
-  j += chf(openRappen(v));
+  j += chf(openRappenOf(v));
   j += "\"}";
   return j;
 }
@@ -134,10 +137,18 @@ Vehicle* readKnownVehicle(char* plate) {
   return v;
 }
 
+bool setClock(long long epoch) {
+  if (epoch < 1700000000LL) return false;
+  struct timeval tv = {(time_t)epoch, 0};
+  settimeofday(&tv, nullptr);
+  return true;
+}
+
 void handleEntry() {
   char plate[PLATE_LEN];
   if (!readPlate(plate)) return;
 
+  if (!clockValid()) setClock(atoll(server.arg("epoch").c_str()));
   if (!clockValid()) {
     sendResult(503, false, "NO_TIME",
                "Die Uhrzeit der Kasse ist nicht gestellt, eine Einfahrt ist nicht möglich. "
@@ -158,7 +169,6 @@ void handleEntry() {
   v->used = true;
   strncpy(v->plate, plate, PLATE_LEN);
   v->entry = time(nullptr);
-  v->paid = false;
   v->paidRappen = 0;
 
   Serial.printf("Einfahrt %s um %s\n", v->plate, formatTime(v->entry).c_str());
@@ -172,10 +182,14 @@ void handleExit() {
   Vehicle* v = readKnownVehicle(plate);
   if (v == nullptr) return;
 
-  if (!v->paid) {
-    String open = chf(openRappen(*v));
+  if (!isPaid(*v)) {
+    String open = chf(openRappenOf(*v));
+    String reason = v->paidRappen > 0
+                        ? "Seit der Zahlung von " + chf(v->paidRappen) +
+                              " hat eine weitere Stunde begonnen. Die Nachzahlung von " + open
+                        : "Die Parkgebühr von " + open;
     sendResult(402, false, "UNPAID",
-               "Die Parkgebühr von " + open + " für " + plate +
+               reason + " für " + plate +
                    " ist noch offen. Bitte an der Kasse oder am Automaten bezahlen.",
                "\"open\":\"" + open + "\"");
     return;
@@ -206,10 +220,11 @@ void handleFee() {
   Vehicle* v = readKnownVehicle(plate);
   if (v == nullptr) return;
 
-  String msg = v->paid
+  String msg = isPaid(*v)
                    ? String("Die Gebühr für ") + plate + " ist bezahlt (" + chf(v->paidRappen) +
                          "), offener Betrag CHF 0.00."
-                   : String("Offener Betrag für ") + plate + ": " + chf(openRappen(*v)) + ".";
+                   : String("Offener Betrag für ") + plate + ": " + chf(openRappenOf(*v)) + ".";
+  if (!isPaid(*v) && v->paidRappen > 0) msg += " Bereits bezahlt: " + chf(v->paidRappen) + ".";
   sendResult(200, true, "OK", msg, "\"vehicle\":" + vehicleJson(*v));
 }
 
@@ -218,7 +233,7 @@ void handlePay() {
   Vehicle* v = readKnownVehicle(plate);
   if (v == nullptr) return;
 
-  if (v->paid) {
+  if (isPaid(*v)) {
     sendResult(409, false, "ALREADY_PAID",
                String("Die Gebühr für ") + plate + " wurde bereits bezahlt (" +
                    chf(v->paidRappen) + "), eine zweite Zahlung ist nicht möglich.",
@@ -226,11 +241,11 @@ void handlePay() {
     return;
   }
 
-  v->paidRappen = openRappen(*v);
-  v->paid = true;
-  Serial.printf("Zahlung %s: %s\n", v->plate, chf(v->paidRappen).c_str());
+  long amount = openRappenOf(*v);
+  v->paidRappen += amount;
+  Serial.printf("Zahlung %s: %s\n", v->plate, chf(amount).c_str());
   sendResult(200, true, "OK",
-             "Zahlung über " + chf(v->paidRappen) + " für " + plate + " bestätigt, Status bezahlt.",
+             "Zahlung über " + chf(amount) + " für " + plate + " bestätigt, Status bezahlt.",
              "\"vehicle\":" + vehicleJson(*v));
 }
 
@@ -255,18 +270,15 @@ void handleTestTime() {
   v->entry = time(nullptr) - (time_t)minutes * 60;
   sendResult(200, true, "OK",
              String("Einfahrtszeit von ") + plate + " auf vor " + minutes +
-                 " Minuten gesetzt, Gebühr " + chf(openRappen(*v)) + ".",
+                 " Minuten gesetzt, offener Betrag " + chf(openRappenOf(*v)) + ".",
              "\"vehicle\":" + vehicleJson(*v));
 }
 
 void handleTime() {
-  long long epoch = atoll(server.arg("epoch").c_str());
-  if (epoch < 1700000000LL) {
+  if (!setClock(atoll(server.arg("epoch").c_str()))) {
     sendResult(400, false, "TIME", "Die übermittelte Uhrzeit ist ungültig.");
     return;
   }
-  struct timeval tv = {(time_t)epoch, 0};
-  settimeofday(&tv, nullptr);
   sendResult(200, true, "OK", "Uhrzeit gestellt auf " + formatTime(time(nullptr)) + ".");
 }
 

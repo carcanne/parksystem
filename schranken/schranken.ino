@@ -115,7 +115,7 @@ void sendJson(int status, const String& json) {
 }
 
 void handlePassage(Barrier& barrier, const char* kassePath) {
-  String form = "plate=" + urlEncode(server.arg("plate"));
+  String form = "plate=" + urlEncode(server.arg("plate")) + "&epoch=" + urlEncode(server.arg("epoch"));
   String body;
   int code = callKasse(kassePath, &form, body);
 

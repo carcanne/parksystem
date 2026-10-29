@@ -122,7 +122,7 @@ for (const form of document.querySelectorAll('form[data-gate]')) {
     msg.className = 'msg wait';
     msg.textContent = 'Frage bei der Kasse nach ...';
     button.disabled = true;
-    const r = await getJson('/api/' + gate, { method: 'POST', body: new URLSearchParams({ plate: input.value }) });
+    const r = await getJson('/api/' + gate, { method: 'POST', body: new URLSearchParams({ plate: input.value, epoch: Math.floor(Date.now() / 1000) }) });
     button.disabled = false;
     showMsg(gate, r);
     if (r.ok) input.value = '';

@@ -25,6 +25,16 @@ static void expectFee(long minutes, const char* expected) {
   }
 }
 
+static void expectOpen(long minutes, long paidRappen, const char* expected) {
+  char out[16];
+  formatChf(openRappen(minutes, paidRappen), out, sizeof(out));
+  if (strcmp(out, expected) != 0) {
+    printf("FAIL Offen %ld Min, bezahlt %ld Rp.: erwartet %s, erhalten %s\n", minutes, paidRappen,
+           expected, out);
+    failures++;
+  }
+}
+
 static void expectMinutes(long long entry, long long now, long expected) {
   long got = parkedMinutes(entry, now);
   if (got != expected) {
@@ -60,6 +70,13 @@ int main() {
   expectFee(121, "CHF 6.00");
   expectFee(180, "CHF 6.00");
   expectFee(181, "CHF 8.00");
+
+  expectOpen(0, 0, "CHF 2.00");
+  expectOpen(0, 200, "CHF 0.00");
+  expectOpen(60, 200, "CHF 0.00");
+  expectOpen(61, 200, "CHF 2.00");
+  expectOpen(121, 200, "CHF 4.00");
+  expectOpen(121, 600, "CHF 0.00");
 
   expectMinutes(1000, 1000, 0);
   expectMinutes(1000, 1000 + 59, 0);

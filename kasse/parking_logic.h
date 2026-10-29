@@ -56,6 +56,11 @@ inline long feeRappen(long minutes) {
   return hours * RAPPEN_PER_HOUR;
 }
 
+inline long openRappen(long minutes, long paidRappen) {
+  long due = feeRappen(minutes) - paidRappen;
+  return due > 0 ? due : 0;
+}
+
 inline void formatChf(long rappen, char* out, size_t outSize) {
   snprintf(out, outSize, "CHF %ld.%02ld", rappen / 100, rappen % 100);
 }
