@@ -244,8 +244,8 @@ int main(int argc, char** argv) {
     size_t lastWrite = page.rfind("Msg");
     bool pass = polling != std::string::npos && lastWrite < polling;
     record("TF-11", pass,
-           "Nach 10 s Warten steht die Meldung aus TF-10 unverändert; die Oberfläche setzt die "
-           "Meldung nur bei einer neuen Eingabe, die periodischen Abfragen ändern sie nicht");
+           "Am Quelltext der Schranken-Seite geprüft: Die Meldung wird nur bei einer neuen "
+           "Eingabe gesetzt, die periodischen Abfragen ändern sie nicht");
   }
 
   // Kasse und Gebührenberechnung
@@ -296,7 +296,7 @@ int main(int argc, char** argv) {
     r = fee("AG 123456");
     HttpResponse again = pay("AG 123456");
     bool pass = page.code == 200 && field(r.body, "paid") == "true" && again.code == 409;
-    record("TF-20", pass, "Automat: " + quoteMsg(r) + "; Bezahlknopf gesperrt, Zahlungsversuch HTTP " +
+    record("TF-20", pass, "Automat: " + quoteMsg(r) + "; zweiter Zahlungsversuch HTTP " +
                               std::to_string(again.code));
   }
 
@@ -407,8 +407,8 @@ int main(int argc, char** argv) {
     r = fee("LU 4711");
     record("TF-30", field(r.body, "code") == "UNKNOWN",
            "Kasse: " + quoteMsg(r) + "; Fahrzeugliste auf der Schranken-Oberfläche: " +
-               std::to_string(count) + " Fahrzeuge (alle Daten verloren, ZH 999999 und AG 123456 "
-               "stehen physisch noch im Parkhaus)");
+               std::to_string(count) + " Fahrzeuge (alle Daten verloren, LU 4711, AG 123456 und "
+               "ZH 999999 stehen im Testszenario noch im Parkhaus)");
   }
 
   // TF-32 (Ergänzung): Einfahrt nach Stromunterbruch der Kasse, ohne dass die Kassen-Seite geöffnet wird.
