@@ -62,8 +62,9 @@ class DummyLog : public Log {
   void info(const std::string&) override {}
 };
 
-// Spy: umschliesst eine echte (produktive) Speicherung und zeichnet zusätzlich jeden
-// Aufruf auf. Der Test bleibt damit ein Integrationstest mit Parkhaus + ArraySpeicher.
+// Spy: umschliesst eine echte (produktive) Speicherung und zeichnet zusätzlich jedes
+// Hinzufügen und Entfernen auf. Der Test bleibt damit ein Integrationstest mit Parkhaus +
+// ArraySpeicher.
 class SpeicherSpy : public Fahrzeugspeicher {
  public:
   explicit SpeicherSpy(Fahrzeugspeicher& echt) : echt_(echt) {}
