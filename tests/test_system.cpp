@@ -104,8 +104,8 @@ static HttpResponse testTime(const std::string& plate, int minutes) {
 }
 static std::string vehicleList() { return schrankenApi(HTTP_GET, "/api/vehicles", "").body; }
 
-static bool entryOpen() { return schranken::entryBarrier.isOpen(); }
-static bool exitOpen() { return schranken::exitBarrier.isOpen(); }
+static bool entryOpen() { return schranken::entryBarrier.istOffen(); }
+static bool exitOpen() { return schranken::exitBarrier.istOffen(); }
 
 static std::string barrierText(bool open, int servoPin, int ledPin) {
   unsigned level = sim::pwm()[servoPin];
@@ -128,7 +128,7 @@ static bool listHas(const std::string& plate) {
 }
 
 static void bootKasse() {
-  memset(kasse::vehicles, 0, sizeof(kasse::vehicles));
+  kasse::speicher.leeren();
   sim::clockOffset() = 0;
   sim::kasseOnline() = true;
   kasse::setup();
@@ -191,10 +191,10 @@ int main(int argc, char** argv) {
              std::to_string(closedMs % 1000 / 100) + " s");
 
   {
-    kasse::Vehicle* v = kasse::findVehicle("AG 123456");
-    long long diff = v ? (long long)v->entry - entryNotebook : 9999;
+    kasse::Fahrzeug* v = kasse::speicher.finden("AG 123456");
+    long long diff = v ? (long long)v->einfahrt - entryNotebook : 9999;
     record("TF-03", v && llabs(diff) <= 60,
-           "Einfahrtszeit Kasse " + kasse::formatTime(v->entry).str() + ", Notebook " +
+           "Einfahrtszeit Kasse " + kasse::Parkhaus::zeitText(v->einfahrt) + ", Notebook " +
                notebookTime(entryNotebook) + ", Abweichung " + std::to_string(diff) + " s");
   }
 
@@ -202,12 +202,12 @@ int main(int argc, char** argv) {
   r = passage("entry", "LU 4711");
   {
     std::string list = vehicleList();
-    kasse::Vehicle* a = kasse::findVehicle("AG 123456");
-    kasse::Vehicle* b = kasse::findVehicle("LU 4711");
-    bool pass = r.code == 200 && entryOpen() && a && b && a->entry != b->entry;
+    kasse::Fahrzeug* a = kasse::speicher.finden("AG 123456");
+    kasse::Fahrzeug* b = kasse::speicher.finden("LU 4711");
+    bool pass = r.code == 200 && entryOpen() && a && b && a->einfahrt != b->einfahrt;
     record("TF-04", pass,
-           entryText() + "; Liste: AG 123456 seit " + kasse::formatTime(a->entry).str() +
-               ", LU 4711 seit " + (b ? kasse::formatTime(b->entry).str() : std::string("-")));
+           entryText() + "; Liste: AG 123456 seit " + kasse::Parkhaus::zeitText(a->einfahrt) +
+               ", LU 4711 seit " + (b ? kasse::Parkhaus::zeitText(b->einfahrt) : std::string("-")));
   }
   advance(6000);
 
@@ -388,7 +388,7 @@ int main(int argc, char** argv) {
   {
     r = passage("entry", "SG 55555");
     HttpResponse barriers = schrankenApi(HTTP_GET, "/api/barriers", "");
-    bool noEntry = kasse::findVehicle("SG 55555") == nullptr;
+    bool noEntry = kasse::speicher.finden("SG 55555") == nullptr;
     bool pass = !entryOpen() && field(r.body, "code") == "CONNECTION" && noEntry && barriers.code == 200;
     record("TF-29", pass, entryText() + "; " + quoteMsg(r) + "; Eintrag SG 55555 entstanden: " +
                               (noEntry ? "nein" : "ja") + "; Schranken-Oberfläche antwortet (HTTP " +
